@@ -22,7 +22,7 @@ Externally obtained data + ICD-9-CM-to-PhecodeX mapping
         Real training partition       Real test partition
                   |                       |
        Train generators separately   Train separate generators
-       for each repetition           for proxy testing only
+       for each repetition           for proxy testing
                   |                       |
        Synthetic training cohorts    Synthetic proxy test cohorts
                   \                       /
@@ -30,7 +30,7 @@ Externally obtained data + ICD-9-CM-to-PhecodeX mapping
        Data fidelity | Downstream performance | Privacy
 ```
 
-The study uses MIMIC-III v1.4: 37,442 adults, 343 binary parent-level PhecodeX indicators, and four binary sensitive attributes. The fixed 80:20 split contains 29,959 training patients and 7,483 test patients, stratified on the joint sensitive-attribute pattern. Each method uses five independent generations: 30,000 records per synthetic training cohort and 7,483 records per synthetic proxy test cohort.
+The study uses MIMIC-III v1.4: binary parent-level PhecodeX indicators and four binary sensitive attributes. The fixed 80:20 split contains 29,959 training patients and 7,483 test patients, stratified on the joint sensitive-attribute pattern. Each method uses five independent generations: 30,000 records per synthetic training cohort and 7,483 records per synthetic proxy test cohort.
 
 ## Repository structure
 
