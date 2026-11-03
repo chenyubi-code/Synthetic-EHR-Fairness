@@ -6,7 +6,7 @@ Code for training synthetic EHR generators and evaluating subgroup fidelity, dow
 
 [Workflow](#workflow) · [Repository structure](#repository-structure) · [Generation methods](#generation-methods) · [Evaluation metrics](#evaluation-metrics) · [Getting started](#getting-started) · [Data access](#data-access)
 
-> This is a **code-only repository**. Patient records, generated cohorts, trained checkpoints, cached results, and manuscript plotting or table-building scripts are not distributed here.
+> This is a **code-only repository**. Patient records, generated cohorts, trained checkpoints, and cached results are not distributed here.
 
 ## Workflow
 
