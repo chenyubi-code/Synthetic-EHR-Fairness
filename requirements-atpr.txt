@@ -1,0 +1,3 @@
+# Install in a separate Python 3.11+ environment.
+# Configure METRICS_ADJUSTER_PYTHON to that environment's Python executable.
+metrics-adjuster
