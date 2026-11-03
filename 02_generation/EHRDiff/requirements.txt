@@ -1,8 +1,0 @@
-# Python 3.9
-torch==1.11.0
-numpy==1.22.4
-pandas==1.5.3
-scipy==1.7.1
-matplotlib==3.6.1
-transformers==4.36.2
-einops==0.7.0
