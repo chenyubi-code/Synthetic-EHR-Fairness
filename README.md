@@ -116,7 +116,7 @@ Small gap errors do not establish accurate absolute performance within each subg
 
 The default outcomes are ischemic heart disease (`CV_404`) and renal failure (`GU_582`). Classifiers are ridge-penalized logistic regression, Random Forest, and XGBoost. Outcomes and classifiers can be selected in the evaluation function. Performance measures are AUC, ACC, TPR, adjusted TPR (aTPR), FPR, and PPR.
 
-Sensitive attributes define evaluation subgroups and are excluded from the downstream predictors. The outcome phenotype is also excluded. Predictor screening uses the real training partition only: prevalence must exceed 1% in both groups of every sensitive attribute. Each default outcome must additionally have at least 50 positive and 50 negative real-test observations in every subgroup.
+Sensitive attributes define evaluation subgroups and are excluded from the downstream predictors. The outcome phenotype is also excluded. Predictor screening uses the real training partition only: prevalence must exceed 1% in both groups of every sensitive attribute.
 
 **TRTS uses separately generated test cohorts.** Its generators are trained on the real test partition solely to create proxy test data; the predictive model remains the fixed TRTR model trained on the real training partition. Privacy evaluation instead uses training-derived synthetic cohorts, with real training records as members and real test records as nonmembers.
 
