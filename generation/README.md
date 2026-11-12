@@ -172,6 +172,54 @@ python generation/matrix_to_csv.py \
 
 The wrapper retains CPU training, 1,000 epochs, the final EMA checkpoint, and the deterministic 32-step Heun EDM sampler. Sampling creates the original 30,000-row batch and retains the requested rows; `--n-generate` accepts 1 through 30,000. The conversion removes the padding column. Parallel runs must use different `--port` values.
 
+## Alternative sensitive-attribute definitions
+
+Supplementary Methods S1.6 retrains every generator for age >=85 years and,
+separately, Black versus non-Black race. Use `prepare_subgroup_sensitivity()`
+from [subgroup_sensitivity.R](../subgroup_sensitivity.R) on the original
+patient-level train/test partitions; use `recode_sensitive_definition()` on
+the corresponding HALO visit partitions. Keep all 343 generation phenotypes; the fixed 92
+evaluation phenotypes are supplied to the evaluation functions only. Keep
+each scenario, partition, and seed in a separate output directory.
+
+The helpers use explicit names (`age85` or `black`), so pass the corresponding
+four-column schema. For example, after exporting the age85 training partition
+locally:
+
+```bash
+python generation/baselines.py --method SBS \
+  --input-csv "$INPUT_CSV" --output-csv "$RUN_DIR/sbs.csv" \
+  --seed "$SEED" --n-generate "$N_GENERATE" \
+  --sensitive-columns age85 male white private
+
+python generation/prepare_binary_matrix.py \
+  --input-csv "$INPUT_CSV" --output-npy "$RUN_DIR/train.npy" \
+  --columns-json "$RUN_DIR/columns.json" \
+  --sensitive-columns age85 male white private
+
+python generation/vae.py \
+  --input-csv "$INPUT_CSV" --output-csv "$RUN_DIR/vae.csv" \
+  --seed "$SEED" --n-generate "$N_GENERATE" \
+  --sensitive-columns age85 male white private
+
+python generation/halo/build_halo_dataset_repeat.py \
+  --input_csv "$VISITS_CSV" --out_dir "$RUN_DIR/halo_data" \
+  --label_cols age85 male white private
+```
+
+For the Black scenario use `age80 male black private` instead. Resample accepts
+the same `--sensitive-columns` option as SBS. medGAN and CorGAN consume the
+prepared matrices; their commands do not require label-name flags. EHRDiff
+also consumes a matrix: add `--pad-ehrdiff` during preparation and retain its
+matching column manifest. HALO training, sampling, and conversion restore the
+label names from the scenario-specific prepared directory. Refit both the
+training-derived and test-derived generators across all five seeds; do not
+relabel already-generated primary-analysis cohorts.
+
+The existing model defaults are retained. In medGAN, the GAN batch size is
+1,000 and the autoencoder pretraining batch size is 100; these are separate
+training stages.
+
 ## Model attribution
 
 See [THIRD_PARTY.md](THIRD_PARTY.md), [LICENSE-medGAN](LICENSE-medGAN), and [LICENSE-HALO](LICENSE-HALO) for the retained source-method notices.
