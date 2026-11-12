@@ -4,7 +4,7 @@
 
 Code for training synthetic EHR generators and evaluating subgroup fidelity, downstream predictive performance, and privacy exposure using the methods in the accompanying manuscript.
 
-[Workflow](#workflow) · [Repository structure](#repository-structure) · [Generation methods](#generation-methods) · [Evaluation metrics](#evaluation-metrics) · [Getting started](#getting-started) · [Data access](#data-access)
+[Workflow](#workflow) · [Repository structure](#repository-structure) · [Generation methods](#generation-methods) · [Evaluation metrics](#evaluation-metrics) · [Sensitivity analyses](#sensitivity-analyses) · [Getting started](#getting-started) · [Data access](#data-access)
 
 > This is a **code-only repository**. Patient records, generated cohorts, trained checkpoints, and cached results are not distributed here.
 
@@ -30,7 +30,16 @@ Externally obtained data + ICD-9-CM-to-PhecodeX mapping
        Data fidelity | Downstream performance | Privacy
 ```
 
-The study uses MIMIC-III v1.4 data represented by binary parent-level PhecodeX indicators and binary sensitive attributes. The data are divided into fixed training and test sets using a patient-level split stratified by the joint sensitive-attribute pattern. Each generation method is evaluated across independent repetitions.
+The study uses MIMIC-III v1.4: 37,442 adults, 343 binary parent-level PhecodeX indicators, and four binary sensitive attributes. A fixed 80:20 patient-level split, stratified on the 16 joint sensitive-attribute patterns, yields 29,959 training and 7,483 test records.
+
+| Analysis | Generator source | Records generated per repetition |
+| :--- | :--- | ---: |
+| Data-level fidelity, privacy, TSTR, and TSRTR | Real training partition | 30,000 |
+| TRTS proxy testing | Real test partition | 7,483 |
+
+Each method uses five independent repetitions, with seeds `202601`–`202605`. Learned generators are initialized and trained from scratch for every repetition and source partition; Resample and SBS directly sample from the corresponding source. Probability-valued outputs are converted to binary indicators by Bernoulli sampling, and HALO sequences are aggregated to the patient-level representation.
+
+The default real-training prevalence screen yielded 92 evaluation phenotypes and 4,186 distinct phenotype pairs in the study. Privacy uses all 343 phenotype indicators. These are properties of the study cohort, not requirements imposed on other datasets.
 
 ## Repository structure
 
@@ -38,6 +47,7 @@ The study uses MIMIC-III v1.4 data represented by binary parent-level PhecodeX i
 Synthetic-EHR-Fairness/
 ├── README.md
 ├── preprocessing.R             # Cohort construction from external inputs
+├── subgroup_sensitivity.R      # Alternative subgroup coding from local metadata
 ├── install_R_dependencies.R
 ├── requirements-atpr.txt
 ├── generation/                 # Generator training, sampling, and dependencies
@@ -46,6 +56,8 @@ Synthetic-EHR-Fairness/
 │   ├── data_level.R            # SARE, MPPGE, MPCGE, MAPPE, MAPCE
 │   ├── downstream.R            # Predictive evaluation, DSGE, and DSAE
 │   ├── privacy.R               # Member/nonmember exposure and subgroup gaps
+│   ├── privacy_sensitivity.R   # Matched synthetic candidate-pool evaluation
+│   ├── batch_neighbors.cpp     # Exact Hamming search across candidate-pool draws
 │   ├── classifiers.R           # Ridge logistic regression, RF, XGBoost
 │   ├── atpr.R                  # Adjusted-TPR interface
 │   ├── nearest_neighbor.R      # Hamming-distance and inference calculations
@@ -103,7 +115,7 @@ baMIRG = |baMIR(group 1) - baMIR(group 0)|
 baAIRG = |baAIR(group 1) - baAIR(group 0)|
 ```
 
-Small gap errors do not establish accurate absolute performance within each subgroup. Similarly, small privacy gaps do not establish low privacy exposure. The member and nonmember diagnostics are retained for interpretation.
+The real-data gaps are descriptive references, not disparities the framework attempts to remove. Small gap errors do not establish accurate absolute performance within each subgroup. Similarly, small privacy gaps do not establish low privacy exposure. The member and nonmember diagnostics are retained for interpretation.
 
 ### Downstream settings
 
@@ -119,6 +131,21 @@ The default outcomes are ischemic heart disease (`CV_404`) and renal failure (`G
 Sensitive attributes define evaluation subgroups and are excluded from the downstream predictors. The outcome phenotype is also excluded. Predictor screening uses the real training partition only: prevalence must exceed 1% in both groups of every sensitive attribute.
 
 **TRTS uses separately generated test cohorts.** Its generators are trained on the real test partition solely to create proxy test data; the predictive model remains the fixed TRTR model trained on the real training partition. Privacy evaluation instead uses training-derived synthetic cohorts, with real training records as members and real test records as nonmembers.
+
+TSTR and TRTS have different generator-source and synthetic sample sizes. Comparing their errors therefore does not isolate the effect of synthetic training versus synthetic testing.
+
+### Repetition summaries
+
+Compute absolute gap or subgroup errors within each repetition before averaging. Study summaries report arithmetic means over five repetitions and standard errors from the five repetition-level values. For downstream summaries that combine tasks and classifiers, first average the two tasks and three classifier classes within each repetition. Attribute averages give equal weight to the four contrasts; subgroup averages give equal weight to the eight marginal subgroups. See [metrics/README.md](metrics/README.md) for API outputs and missing-value coverage.
+
+## Sensitivity analyses
+
+The supplementary evaluation includes two additional analyses:
+
+- **Synthetic candidate-pool size:** match the number of synthetic candidates in the two subgroups for each attribute, using 20 random subsamples within each generator repetition. Members and nonmembers use the same sampled candidates. Average the absolute privacy gaps over those 20 subsamples before calculating means and standard errors across generator repetitions.
+- **Alternative subgroup definitions:** replace age >=80 with age >=85, or White versus non-White with Black versus non-Black (recorded ethnicity begins with `BLACK`). Retain the original cohort, train/test assignment, phenotype columns, and the same 92 evaluation phenotypes. Retrain all learned generators and regenerate the baselines under each recoding, including separate TRTS proxy cohorts.
+
+The public sensitivity functions and examples are described in [metrics/README.md](metrics/README.md). They require locally supplied data and return evaluation results; they do not build figures or manuscript tables. Alternative coding requires the original age or ethnicity information, which cannot be reconstructed from `age80` or `white` alone. The baseline, VAE, and matrix-preparation commands accept explicit column names, such as `--sensitive-columns age85 male white private` (HALO preparation uses `--label_cols`); see [generation/README.md](generation/README.md).
 
 ## Getting started
 
@@ -215,6 +242,8 @@ Rscript tests/test_preprocessing.R
 Rscript tests/test_data_level.R
 Rscript tests/test_downstream.R
 Rscript tests/test_privacy.R
+Rscript tests/test_privacy_sensitivity.R
+Rscript tests/test_subgroup_sensitivity.R
 python tests/test_generation.py
 
 # Optional: requires the metrics-adjuster environment configured above
