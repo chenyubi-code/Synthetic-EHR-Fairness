@@ -17,7 +17,7 @@ Install a dependency file in its matching environment; these are separate enviro
 python -m pip install -r generation/requirements-torch.txt
 ```
 
-medGAN retains its original TensorFlow 1.x implementation and should use the listed Linux environment. EHRDiff additionally requires the upstream code described below. The dependency files preserve the source project's environment specifications; the small local smoke checks are documented in [../VALIDATION.md](../VALIDATION.md).
+medGAN retains its original TensorFlow 1.x implementation and should use the listed Linux environment. EHRDiff additionally requires the upstream code described below. The dependency files preserve the source project's environment specifications.
 
 ## Inputs and repetition settings
 
