@@ -11,6 +11,9 @@ validate_ehr_data <- function(dat, name = "data", sensitive_columns = sensitive_
   if (!is.data.frame(dat) || !nrow(dat)) {
     stop(name, " must be a non-empty data.frame.")
   }
+  # data.table and tibble inherit data.frame but have different column-selection
+  # semantics; normalize once and leave the caller's object unchanged.
+  dat <- as.data.frame(dat)
   dat <- dat[, setdiff(names(dat), c("subject_id", "hadm_id")), drop = FALSE]
   if (anyDuplicated(names(dat))) {
     stop(name, " contains duplicate column names.")
@@ -89,8 +92,11 @@ standard_error <- function(x) {
 compute_eval_phenotypes <- function(
   real_train,
   prevalence_threshold = 0.01,
-  sensitive_columns = sensitive_vars
+  sensitive_columns = sensitive_vars,
+  evaluation_phenotypes = NULL
 ) {
+  ensure_packages("data.table")
+  real_train <- validate_ehr_data(real_train, "real_train", sensitive_columns)
   if (length(prevalence_threshold) != 1L || !is.finite(prevalence_threshold) ||
       prevalence_threshold < 0 || prevalence_threshold >= 1) {
     stop("prevalence_threshold must be a single number in [0, 1).")
@@ -98,6 +104,12 @@ compute_eval_phenotypes <- function(
   phenotype_vars <- get_phenotype_vars(real_train, sensitive_columns)
   if (!length(phenotype_vars)) {
     stop("At least one phenotype column is required.")
+  }
+  if (!is.null(evaluation_phenotypes) &&
+      (!is.character(evaluation_phenotypes) || !length(evaluation_phenotypes) ||
+       anyNA(evaluation_phenotypes) || anyDuplicated(evaluation_phenotypes) ||
+       any(!evaluation_phenotypes %in% phenotype_vars))) {
+    stop("evaluation_phenotypes must be unique names of existing phenotype columns.")
   }
   subgroup_grid <- make_sensitive_subgroup_grid(sensitive_columns)
   phenotype_matrix <- as_binary_matrix(real_train, phenotype_vars)
@@ -142,12 +154,22 @@ compute_eval_phenotypes <- function(
       stringsAsFactors = FALSE
     )
   }))
-  phenotype_summary[, included := !is.na(minimum_subgroup_prevalence) &
+  phenotype_summary[, passes_prevalence_screen := !is.na(minimum_subgroup_prevalence) &
     minimum_subgroup_prevalence > prevalence_threshold]
+  phenotype_summary[, included := passes_prevalence_screen]
+  phenotype_summary[, selection_rule := "real_training_prevalence"]
+  if (!is.null(evaluation_phenotypes)) {
+    # Sensitivity analyses retain the main benchmark's selected features, even
+    # when an alternative subgroup definition changes their subgroup prevalence.
+    phenotype_summary[, included := phenotype %in% evaluation_phenotypes]
+    phenotype_summary[, selection_rule := "supplied_fixed_phenotypes"]
+  }
   data.table::setorder(phenotype_summary, -included, -minimum_subgroup_prevalence, phenotype)
 
   list(
-    phenotypes = phenotype_summary[included == TRUE, phenotype],
+    phenotypes = if (is.null(evaluation_phenotypes)) {
+      phenotype_summary[included == TRUE, phenotype]
+    } else evaluation_phenotypes,
     prevalence_by_subgroup = prevalence_table,
     phenotype_screen = phenotype_summary
   )

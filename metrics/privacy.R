@@ -6,6 +6,7 @@ compute_privacy_population <- function(
   population = "mem"
 ) {
   ensure_packages(c("data.table", "Rcpp"))
+  population <- match.arg(population, c("mem", "nonmem"))
   real_data <- validate_ehr_data(real_data, "real_data", sensitive_columns)
   replicates <- as_replicate_list(synthetic_data)
   phenotypes <- get_phenotype_vars(real_data, sensitive_columns)
@@ -13,7 +14,9 @@ compute_privacy_population <- function(
     stop("At least one phenotype column is required.")
   }
 
-  if (length(sensitive_columns) < 2L) stop("AIR requires at least two sensitive attributes.")
+  if (length(sensitive_columns) < 2L || anyDuplicated(sensitive_columns)) {
+    stop("AIR requires at least two unique sensitive attributes.")
+  }
   rows <- list()
   target_rows <- list()
   for (repetition in names(replicates)) {
@@ -72,7 +75,7 @@ compute_privacy_population <- function(
           n_real_records = length(real_index),
           n_synthetic_candidates = length(synthetic_index),
           MIR = if (length(real_index) && length(synthetic_index)) safe_mean(nearest$distance) else NA_real_,
-          AIR = safe_mean(f1_values),
+          AIR = if (all(is.finite(f1_values))) mean(f1_values) else NA_real_,
           AIR_ACC = safe_mean(accuracy_values),
           n_valid_AIR_targets = sum(is.finite(f1_values)),
           stringsAsFactors = FALSE
