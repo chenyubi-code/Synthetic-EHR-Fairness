@@ -26,6 +26,26 @@ stopifnot(is.na(compute_dsge(scores)[metric == "aTPR", DSGE]),
           is.na(compute_dsae(scores)$by_repetition[metric == "aTPR" & group_value == 0, DSAE]))
 stopifnot(inherits(try(compute_dsge(scores[-1, ]), silent = TRUE), "try-error"))
 
+# Two generation means (.15 and .35) give mean .25 and SE .10. Task/model
+# observations are not independent generation replicates for uncertainty.
+aggregation_cells <- CJ(repetition = c("r1", "r2"),
+                        phenotype = c("task1", "task2"),
+                        prediction_model = c("model1", "model2"))
+aggregation_cells[, `:=`(method = "toy", regime = "TSTR", metric = "AUC",
+                         sensitive_attribute = "age80", group_value = 0L,
+                         DSAE = c(0, .1, .2, .3, .2, .3, .4, .5))]
+aggregated <- summarize_downstream_errors(aggregation_cells, "DSAE",
+                                          c("sensitive_attribute", "group_value"))
+stopifnot(abs(aggregated$summary$mean_DSAE - .25) < 1e-12,
+          abs(aggregated$summary$mean_DSAE_se - .1) < 1e-12,
+          aggregated$summary$n_valid == 8L,
+          aggregated$summary$n_repetitions == 2L)
+aggregation_cells$DSAE[1] <- NA_real_
+incomplete <- summarize_downstream_errors(aggregation_cells, "DSAE")
+stopifnot(is.na(incomplete$summary$mean_DSAE),
+          incomplete$summary$n_valid == 7L,
+          incomplete$summary$n_valid_repetitions == 1L)
+
 set.seed(81)
 toy <- as.data.frame(lapply(seq_len(8), function(i) rbinom(512, 1, .5)))
 names(toy) <- c(sensitive_vars, "CV_404", "GU_582", "P1", "P2")
@@ -43,5 +63,24 @@ stopifnot(setequal(result$subgroup_metrics$prediction_model, prediction_models),
           all(is.finite(result$subgroup_metrics$AUC)),
           !"aTPR" %in% result$dsge_by_repetition$metric,
           all(!result$predictors$predictor %in% c(sensitive_vars, "CV_404")))
+stopifnot(all(result$dsge_summary_by_attribute[regime == "TRTS", mean_DSGE] == 0),
+          all(result$dsae_summary_by_subgroup[regime == "TRTS", mean_DSAE] == 0),
+          all(result$dsge_summary$n_expected == 12L),
+          all(result$dsae_summary$n_expected == 24L))
+# Selecting a single classifier must retain its original benchmark random seed.
+# Explicit phenotypes also bypass a changed prevalence screen without changing
+# outcome test-case checks or accidentally including sensitive attributes.
+fixed_phenotypes <- compute_eval_phenotypes(real_train)$phenotypes
+selected_model <- compute_downstream_metrics(real_train, real_test,
+  synthetic_test = real_test, regimes = "TRTS", models = "random_forest",
+  outcomes = "CV_404", minimum_test_cases = 10, include_atpr = FALSE,
+  prevalence_threshold = .6, evaluation_phenotypes = fixed_phenotypes)
+full_reference <- result$subgroup_metrics[regime == "TRTR" & prediction_model == "random_forest"]
+selected_reference <- selected_model$subgroup_metrics[regime == "TRTR"]
+stopifnot(identical(full_reference$AUC, selected_reference$AUC),
+          setequal(selected_model$predictors$predictor, setdiff(fixed_phenotypes, "CV_404")),
+          all(selected_model$phenotype_screen$included),
+          all(!selected_model$phenotype_screen$passes_prevalence_screen))
 cat("PASS: downstream formulas, aTPR reference reduction, missing-value handling,\n",
+    "repetition-level aggregation, fixed phenotype selection, classifier seeds,\n",
     "three classifiers, three regimes, and fixed TRTR/TRTS model identity.\n")

@@ -31,9 +31,31 @@ real$rare <- 0L
 shifted$rare <- 1L
 screened <- compute_data_level_metrics(real, shifted)
 stopifnot(!screened$phenotype_screen[phenotype == "rare", included])
+identified <- real
+identified$subject_id <- seq_len(nrow(identified))
+stopifnot(identical(compute_eval_phenotypes(identified)$phenotypes,
+                    compute_eval_phenotypes(real)$phenotypes))
+table_input <- data.table::as.data.table(identified)
+table_before <- data.table::copy(table_input)
+stopifnot(identical(compute_eval_phenotypes(table_input)$phenotypes,
+                    compute_eval_phenotypes(real)$phenotypes),
+          identical(table_input, table_before))
 # Absent generated subgroups are explicit missing cells.
 missing_group <- compute_data_level_metrics(real, shifted[shifted$age80 == 0, ])
 stopifnot(is.na(missing_group$subgroup_by_repetition[
   sensitive_attribute == "age80" & group_value == 1, MAPPE]))
+# Alternative subgroup analyses keep the main benchmark's phenotype list, even
+# when an individual phenotype fails the newly coded subgroup prevalence screen.
+fixed <- compute_data_level_metrics(real, shifted, evaluation_phenotypes = c("P1", "rare"))
+stopifnot(fixed$phenotype_screen[phenotype == "rare", included],
+          !fixed$phenotype_screen[phenotype == "rare", passes_prevalence_screen],
+          !fixed$phenotype_screen[phenotype == "P2", included],
+          all(fixed$subgroup_by_repetition$n_eval_phenotypes == 2L),
+          all(abs(fixed$subgroup_by_repetition$MAPPE - .625) < 1e-12),
+          all(fixed$phenotype_screen$selection_rule == "supplied_fixed_phenotypes"))
+for (invalid in list(c("P1", "P1"), c("P1", "missing"), c("P1", "age80"), NA_character_)) {
+  stopifnot(inherits(try(compute_data_level_metrics(real, shifted,
+    evaluation_phenotypes = invalid), silent = TRUE), "try-error"))
+}
 cat("PASS: all five data-level metrics, identity, known gap/absolute contrasts,\n",
-    "real-only screening, constant features, and absent subgroups.\n")
+    "real-only/fixed screening, constant features, and absent subgroups.\n")
