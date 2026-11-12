@@ -250,7 +250,7 @@ python tests/test_generation.py
 Rscript tests/test_atpr.R
 ```
 
-These tests construct small artificial examples. They do not load MIMIC-III or require distributed patient records. See [VALIDATION.md](VALIDATION.md) for the checks performed on this organized copy and the remaining environment-dependent checks.
+These tests construct small artificial examples. They do not load MIMIC-III or require distributed patient records.
 
 ## Data access
 
