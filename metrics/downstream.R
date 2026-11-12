@@ -170,6 +170,31 @@ compute_dsge <- function(subgroup_metrics) {
   result
 }
 
+# Average task/model cells within each generation repetition first. The standard
+# error then describes independent generation repetitions, not pooled task cells.
+summarize_downstream_errors <- function(cells, error_column, subgroup_columns = character()) {
+  groups <- c("method", "regime", "metric", subgroup_columns)
+  cells <- data.table::as.data.table(cells)
+  if (!error_column %in% c("DSGE", "DSAE") ||
+      !all(c(groups, "repetition", error_column) %in% names(cells))) {
+    stop("Supply DSGE or DSAE cells with their grouping columns and repetition.")
+  }
+  by_repetition <- cells[, .(
+    mean_error = if (all(is.finite(.SD[[1L]]))) mean(.SD[[1L]]) else NA_real_,
+    n_valid = sum(is.finite(.SD[[1L]])), n_expected = .N
+  ), by = c(groups, "repetition"), .SDcols = error_column]
+  summary <- by_repetition[, .(
+    mean_error = if (all(is.finite(mean_error))) mean(mean_error) else NA_real_,
+    error_se = if (all(is.finite(mean_error))) standard_error(mean_error) else NA_real_,
+    n_valid = sum(n_valid), n_expected = sum(n_expected),
+    n_repetitions = .N, n_valid_repetitions = sum(is.finite(mean_error))
+  ), by = groups]
+  data.table::setnames(by_repetition, "mean_error", paste0("mean_", error_column))
+  data.table::setnames(summary, c("mean_error", "error_se"),
+                       c(paste0("mean_", error_column), paste0("mean_", error_column, "_se")))
+  list(by_repetition = by_repetition, summary = summary)
+}
+
 compute_downstream_metrics <- function(
   real_train,
   real_test,
@@ -183,7 +208,8 @@ compute_downstream_metrics <- function(
   sensitive_columns = sensitive_vars,
   temporary_directory = tempdir(),
   models = prediction_models,
-  include_atpr = TRUE
+  include_atpr = TRUE,
+  evaluation_phenotypes = NULL
 ) {
   model_dependencies <- list(ridge_logistic = c("glmnet", "Matrix"),
                             random_forest = "randomForest", xgboost = c("xgboost", "Matrix"))
@@ -228,14 +254,16 @@ compute_downstream_metrics <- function(
   real_train <- validate_ehr_data(real_train, "real_train", sensitive_columns)
   real_test <- validate_ehr_data(real_test, "real_test", sensitive_columns)
   real_test <- check_same_columns(real_train, real_test, "real_test")
-  screen <- compute_eval_phenotypes(real_train, prevalence_threshold, sensitive_columns)
+  screen <- compute_eval_phenotypes(real_train, prevalence_threshold, sensitive_columns,
+                                   evaluation_phenotypes)
   evaluation_phenotypes <- screen$phenotypes
   eligible_outcomes <- get_prediction_phenotypes(
     real_train,
     real_test,
     prevalence_threshold,
     minimum_test_cases,
-    sensitive_columns
+    sensitive_columns,
+    evaluation_phenotypes
   )
   missing_outcomes <- setdiff(outcomes, eligible_outcomes)
   if (length(missing_outcomes)) {
@@ -257,7 +285,7 @@ compute_downstream_metrics <- function(
 
     for (i in seq_along(models)) {
       model <- models[i]
-      set.seed(analysis_seed + i)
+      set.seed(analysis_seed + match(model, prediction_models))
       fitted <- fit_fixed_real_model(model, x_real_train, real_train[[outcome]])
       fixed_models[[outcome]][[model]] <- fitted
       probability <- predict_fixed_real_model(fitted, x_real_test)
@@ -306,7 +334,8 @@ compute_downstream_metrics <- function(
               as_binary_matrix(synthetic_test_data, predictors)
             )
           } else {
-            set.seed(analysis_seed + if (regime == "TSRTR") 100L + i else i)
+            set.seed(analysis_seed + match(model, prediction_models) +
+                       if (regime == "TSRTR") 100L else 0L)
             training_matrix <- if (regime == "TSRTR") {
               rbind(x_real_train, x_synthetic_train)
             } else {
@@ -332,6 +361,11 @@ compute_downstream_metrics <- function(
   subgroup_metrics <- data.table::rbindlist(rows)
   dsge_by_repetition <- compute_dsge(subgroup_metrics)
   dsae <- compute_dsae(subgroup_metrics)
+  dsge_attribute <- summarize_downstream_errors(dsge_by_repetition, "DSGE", "sensitive_attribute")
+  dsge_overall <- summarize_downstream_errors(dsge_by_repetition, "DSGE")
+  dsae_subgroup <- summarize_downstream_errors(dsae$by_repetition, "DSAE",
+                                               c("sensitive_attribute", "group_value"))
+  dsae_overall <- summarize_downstream_errors(dsae$by_repetition, "DSAE")
   repetition_means <- dsge_by_repetition[, .(
     mean_DSGE = if (all(is.finite(DSGE))) mean(DSGE) else NA_real_,
     n_valid = sum(is.finite(DSGE)), n_expected = .N),
@@ -350,6 +384,14 @@ compute_downstream_metrics <- function(
     dsge_by_repetition = dsge_by_repetition,
     dsae_by_repetition = dsae$by_repetition,
     dsae_reference_details = dsae$reference_details,
+    dsge_attribute_by_repetition = dsge_attribute$by_repetition,
+    dsge_overall_by_repetition = dsge_overall$by_repetition,
+    dsae_subgroup_by_repetition = dsae_subgroup$by_repetition,
+    dsae_overall_by_repetition = dsae_overall$by_repetition,
+    dsge_summary_by_attribute = dsge_attribute$summary,
+    dsge_summary = dsge_overall$summary,
+    dsae_summary_by_subgroup = dsae_subgroup$summary,
+    dsae_summary = dsae_overall$summary,
     summary = summary,
     phenotype_screen = screen$phenotype_screen,
     predictors = predictors

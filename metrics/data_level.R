@@ -23,15 +23,17 @@ compute_data_level_metrics <- function(
   synthetic_data,
   method = "synthetic",
   prevalence_threshold = 0.01,
-  sensitive_columns = sensitive_vars
+  sensitive_columns = sensitive_vars,
+  evaluation_phenotypes = NULL
 ) {
   ensure_packages("data.table")
   real_data <- validate_ehr_data(real_data, "real_data", sensitive_columns)
   replicates <- as_replicate_list(synthetic_data)
-  screen <- compute_eval_phenotypes(real_data, prevalence_threshold, sensitive_columns)
+  screen <- compute_eval_phenotypes(real_data, prevalence_threshold, sensitive_columns,
+                                   evaluation_phenotypes)
   phenotypes <- screen$phenotypes
   if (length(phenotypes) < 2) {
-    stop("At least two phenotypes must pass the prevalence screen.")
+    stop("At least two evaluation phenotypes are required.")
   }
 
   real_reference <- setNames(lapply(sensitive_columns, function(attribute) {

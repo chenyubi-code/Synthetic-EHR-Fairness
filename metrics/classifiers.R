@@ -147,9 +147,11 @@ get_prediction_phenotypes <- function(
   real_test,
   prevalence_threshold = 0.01,
   minimum_test_cases = 50,
-  sensitive_columns = sensitive_vars
+  sensitive_columns = sensitive_vars,
+  evaluation_phenotypes = NULL
 ) {
-  eval_info <- compute_eval_phenotypes(real_train, prevalence_threshold, sensitive_columns)
+  eval_info <- compute_eval_phenotypes(real_train, prevalence_threshold, sensitive_columns,
+                                     evaluation_phenotypes)
   prediction_phenotypes <- character(0)
 
   for (phenotype in eval_info$phenotypes) {

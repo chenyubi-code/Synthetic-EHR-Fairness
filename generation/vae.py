@@ -133,6 +133,8 @@ def main():
     parser.add_argument('--model-path', type=Path, help='Checkpoint output; defaults to output CSV with .pt suffix')
     parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--batch-size', type=int, default=1024)
+    parser.add_argument("--sensitive-columns", nargs=4,
+                        default=["age80", "male", "white", "private"])
     args = parser.parse_args()
     set_seed(args.seed)
     if min(args.epochs, args.batch_size, args.n_generate) <= 0:
@@ -141,7 +143,7 @@ def main():
         from .prepare_binary_matrix import prepare_binary_matrix
     except ImportError:
         from prepare_binary_matrix import prepare_binary_matrix
-    x, columns = prepare_binary_matrix(pd.read_csv(args.input_csv))
+    x, columns = prepare_binary_matrix(pd.read_csv(args.input_csv), sensitive_columns=args.sensitive_columns)
     prevalence = x.mean(axis=0).astype(np.float32)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     loader = DataLoader(TensorDataset(torch.from_numpy(x)), batch_size=args.batch_size,

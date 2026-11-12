@@ -50,6 +50,21 @@ def main():
         raise AssertionError("Missing binary values were not rejected")
     except ValueError:
         pass
+    # Alternative definitions retain their explicit names throughout generation.
+    for old, new in [("age80", "age85"), ("white", "black")]:
+        alternate = conditional.rename(columns={old: new})
+        labels = [new if name == old else name for name in columns[:4]]
+        sampled_alt = generate_sbs(alternate, 100, 3, labels)
+        pd.testing.assert_frame_equal(sampled_alt.rename(columns={new: old}), sampled)
+        sampled_rows = generate_resample(alternate, 48, 17, labels)
+        assert list(sampled_rows.columns) == list(alternate.columns)
+        _, alternate_names = prepare_binary_matrix(alternate, sensitive_columns=labels)
+        assert alternate_names == list(alternate.columns)
+        try:
+            prepare_binary_matrix(alternate)
+            raise AssertionError("Alternative labels accepted without explicit schema")
+        except ValueError:
+            pass
     print("PASS: Resample/SBS, fixed seeds, conditional marginals, matrix schema/validation")
 
     import torch
@@ -65,6 +80,14 @@ def main():
         assert vae_output.shape == (8, 347) and np.isin(vae_output, [0, 1]).all()
         state = torch.load(folder / "vae.pt", map_location="cpu")
         assert state["input_dim"] == 347 and state["columns"] == columns
+        alternate = artificial.rename(columns={"white": "black"})
+        alternate_csv = folder / "alternate.csv"
+        alternate.to_csv(alternate_csv, index=False)
+        run("generation/vae.py", "--input-csv", alternate_csv,
+            "--output-csv", folder / "alternate_vae.csv",
+            "--seed", 3, "--n-generate", 8, "--epochs", 1, "--batch-size", 16,
+            "--sensitive-columns", "age80", "male", "black", "private")
+        assert list(pd.read_csv(folder / "alternate_vae.csv").columns) == list(alternate.columns)
         print("PASS: VAE one-epoch training, checkpoint, and binary sampling")
 
         np.save(folder / "artificial.npy", artificial.to_numpy(dtype=np.float32), allow_pickle=False)
@@ -84,6 +107,12 @@ def main():
         visits.insert(0, "hadm_id", np.arange(1000, 1032))
         visits.insert(0, "subject_id", np.arange(32))
         visits.to_csv(folder / "visits.csv", index=False)
+        visits.rename(columns={"age80": "age85"}).to_csv(folder / "alternate_visits.csv", index=False)
+        run("generation/halo/build_halo_dataset_repeat.py", "--input_csv", folder / "alternate_visits.csv",
+            "--out_dir", folder / "alternate_halo_data", "--label_cols", "age85", "male", "white", "private")
+        import pickle
+        with open(folder / "alternate_halo_data/idToLabel.pkl", "rb") as handle:
+            assert pickle.load(handle) == ["age85", "male", "white", "private"]
         run("generation/halo/build_halo_dataset_repeat.py", "--input_csv", folder / "visits.csv",
             "--out_dir", folder / "halo_data")
         run("generation/halo/train_halo_repeat.py", "--data_dir", folder / "halo_data",
