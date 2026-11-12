@@ -18,24 +18,28 @@ def parse_args():
     parser.add_argument("--out_dir", required=True)
     parser.add_argument("--split_seed", type=int, default=202600)
     parser.add_argument("--val_fraction", type=float, default=0.1)
+    parser.add_argument("--label_cols", nargs=4, default=LABEL_COLS)
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+    label_cols = args.label_cols
+    if len(set(label_cols)) != 4 or set(label_cols).intersection(ID_COLS):
+        raise ValueError("Exactly four distinct non-ID label columns are required.")
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     df = pd.read_csv(args.input_csv)
-    missing = [col for col in ID_COLS + LABEL_COLS if col not in df.columns]
+    missing = [col for col in ID_COLS + label_cols if col not in df.columns]
     if missing:
         raise ValueError(f"Missing required HALO columns: {missing}")
 
-    phecode_cols = [c for c in df.columns if c not in ID_COLS + LABEL_COLS]
+    phecode_cols = [c for c in df.columns if c not in ID_COLS + label_cols]
     df["subject_id"] = df["subject_id"].astype(str)
     df["hadm_id"] = df["hadm_id"].astype(str)
-    df[LABEL_COLS + phecode_cols] = df[LABEL_COLS + phecode_cols].fillna(0)
-    for col in LABEL_COLS + phecode_cols:
+    df[label_cols + phecode_cols] = df[label_cols + phecode_cols].fillna(0)
+    for col in label_cols + phecode_cols:
         df[col] = (pd.to_numeric(df[col], errors="coerce").fillna(0) > 0).astype(int)
 
     df = df.sort_values(["subject_id", "hadm_id"])
@@ -48,8 +52,8 @@ def main():
     inconsistent_labels = 0
     for _, group in df.groupby("subject_id", sort=False):
         group = group.sort_values("hadm_id")
-        labels = group.iloc[0][LABEL_COLS].astype(int).to_numpy()
-        if not np.all(group[LABEL_COLS].astype(int).to_numpy() == labels):
+        labels = group.iloc[0][label_cols].astype(int).to_numpy()
+        if not np.all(group[label_cols].astype(int).to_numpy() == labels):
             inconsistent_labels += 1
 
         visits = []
@@ -81,7 +85,7 @@ def main():
 
     pickle.dump(code_to_index, open(out_dir / "codeToIndex.pkl", "wb"))
     pickle.dump(index_to_code, open(out_dir / "indexToCode.pkl", "wb"))
-    pickle.dump(LABEL_COLS, open(out_dir / "idToLabel.pkl", "wb"))
+    pickle.dump(label_cols, open(out_dir / "idToLabel.pkl", "wb"))
     pickle.dump(train_dataset, open(out_dir / "trainDataset.pkl", "wb"))
     pickle.dump(val_dataset, open(out_dir / "valDataset.pkl", "wb"))
 
